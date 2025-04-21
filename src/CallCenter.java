@@ -3,8 +3,10 @@ package Project3;
 /*
     You can import any additional package here.
  */
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
@@ -15,7 +17,7 @@ public class CallCenter {
        Total number of customers that each agent will serve in this simulation.
        (Note that an agent can only serve one customer at a time.)
      */
-    private static final int CUSTOMERS_PER_AGENT = 5;
+    private static final int CUSTOMERS_PER_AGENT = 3;
 
     /*
        Total number of agents.
@@ -71,64 +73,57 @@ public class CallCenter {
 
         public void run() {
             try {
-                try {
-                    locky.acquire();
-                    empty.acquire();
-                    Customer cust = queue.peek();
-                    assert cust != null;
-                    serve(cust.ID);
-                    queue.remove(cust);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            } finally {
-                locky.release();
+                empty.acquire();
+                Customer cust = queue.peek();
+                assert cust != null;
+                serve(cust.ID);
+                queue.remove(cust);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
             empty.release();
         }
     }
 
-        /*
-            The greeter class.
-         */
-        public static class Greeter implements Runnable {
-            //TODO: complete the Greeter class
 
-            /*
-               Your implementation must call the method below to serve each customer.
-               Do not modify this method.
-                */
-            public void greet(int customerID) {
-                System.out.println("Greeting customer " + customerID);
-                try {
+    /*
+        The greeter class.
+     */
+    public static class Greeter implements Runnable {
+        //TODO: complete the Greeter class
+
+        /*
+           Your implementation must call the method below to serve each customer.
+           Do not modify this method.
+            */
+        public void greet(int customerID) {
+            System.out.println("Greeting customer " + customerID);
+            try {
                     /*
                     Simulate busy serving a customer by sleeping for a random amount of time.
                     */
-                    sleep(ThreadLocalRandom.current().nextInt(10, 1000));
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            public void run() {
-                try {
-                    try {
-                        locky.acquire();
-                        empty.acquire();
-                        Customer cust = wait.peek();
-                        assert cust != null;
-                        greet(cust.ID);
-                        wait.remove(cust);
-                        queue.add(cust);
-                    }catch(InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }finally{
-                    locky.release();
-                }
-                empty.release();
+                sleep(ThreadLocalRandom.current().nextInt(10, 1000));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
+
+        public void run() {
+            try {
+                empty.acquire();
+                for (int i = 0; i < wait.size(); i++) {
+                    Customer cust = wait.peek();
+                    assert cust != null;
+                    greet(cust.ID);
+                    wait.remove(cust);
+                    queue.add(cust);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            empty.release();
+        }
+    }
 
         /*
             The customer class.
@@ -145,16 +140,16 @@ public class CallCenter {
             }
 
             public void run() {
-                try{
-                    try{
-                        locky.acquire();
+                try {
+                    try {
                         empty.acquire();
+                        locky.acquire();
                         Customer cust = new Customer(ID);
                         wait.add(cust);
-                    }catch(InterruptedException e){
+                    } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                }finally{
+                } finally {
                     locky.release();
                 }
                 empty.release();
@@ -169,23 +164,30 @@ public class CallCenter {
         public static void main(String[] args) {
             //TODO: complete the main method
             Semaphore userlock = new Semaphore(NUMBER_OF_CUSTOMERS);
+            ReentrantLock locky2 = new ReentrantLock();
             ExecutorService es = Executors.newFixedThreadPool(23);
             for (int j = 0; j < NUMBER_OF_CUSTOMERS; j++) {
-                System.out.println("j" + j);
                 es.submit(new Customer(j));
                 try {
-                    sleep(ThreadLocalRandom.current().nextInt(0, 23));
+                    sleep(ThreadLocalRandom.current().nextInt(0, 100));
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
             es.submit(new Greeter());
-            for (int i = 0; i < NUMBER_OF_AGENTS; i++) {
-                System.out.println("i" +i);
-                es.submit(new Agent(i));
+            locky2.unlock();
+            for (int j = 0; j < NUMBER_OF_AGENTS; j++) {
+
+                for (int i = 0; i < CUSTOMERS_PER_AGENT; i++) {
+                    es.submit(new Agent(j));
+                }
+                System.out.println(j);
             }
+            locky2.lock();
+            System.out.println("shutdown");
             es.shutdown();
         }
 
     }
+
 
