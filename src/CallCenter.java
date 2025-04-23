@@ -13,7 +13,8 @@ public class CallCenter {
     private static final Queue<Customer> serveQueue = new LinkedList<>();
 
     // Synchronization
-    private static final Semaphore lock = new Semaphore(1);
+    private static final Semaphore serveLock = new Semaphore(1);
+    private static final Semaphore waitLock = new Semaphore(1);
     private static final Semaphore waitItems = new Semaphore(0);
     private static final Semaphore serveItems = new Semaphore(0);
 
@@ -37,9 +38,9 @@ public class CallCenter {
             for (int i = 0; i < CUSTOMERS_PER_AGENT; i++) {
                 try {
                     serveItems.acquire(); // Wait until a customer is in the serveQueue
-                    lock.acquire();
+                    serveLock.acquire();
                     Customer cust = serveQueue.poll(); // Remove from serveQueue
-                    lock.release();
+                    serveLock.release();
 
                     if (cust != null) {
                         serve(cust.ID);
@@ -55,7 +56,7 @@ public class CallCenter {
         public void greet(int customerID) {
             System.out.println("Greeting customer " + customerID);
             try {
-                sleep(ThreadLocalRandom.current().nextInt(10, 1000));
+                sleep(ThreadLocalRandom.current().nextInt(10, 100));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -65,16 +66,17 @@ public class CallCenter {
             for (int i = 0; i < NUMBER_OF_CUSTOMERS; i++) {
                 try {
                     waitItems.acquire(); // Wait until a customer is in the waitQueue
-                    lock.acquire();
+                    waitLock.acquire();
                     Customer cust = waitQueue.poll(); // Remove from waitQueue
-                    lock.release();
+                    waitLock.release();
 
                     if (cust != null) {
                         greet(cust.ID);
 
-                        lock.acquire();
+                        serveLock.acquire();
                         serveQueue.add(cust); // Add to serveQueue
-                        lock.release();
+                        System.out.println("Customer is in position: " + serveQueue.size());
+                        serveLock.release();
 
                         System.out.println("Customer " + cust.ID + " placed in serve queue.");
                         serveItems.release(); // Signal a customer is ready for serving
@@ -95,10 +97,10 @@ public class CallCenter {
 
         public void run() {
             try {
-                lock.acquire();
+                waitLock.acquire();
                 waitQueue.add(this); // Add to waitQueue
                 System.out.println("Customer " + ID + " entered wait queue.");
-                lock.release();
+                waitLock.release();
                 waitItems.release(); // Signal a customer is waiting to be greeted
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -107,7 +109,7 @@ public class CallCenter {
     }
 
     public static void main(String[] args) {
-        ExecutorService executor = Executors.newFixedThreadPool(NUMBER_OF_CUSTOMERS + NUMBER_OF_AGENTS + 1);
+        ExecutorService executor = Executors.newFixedThreadPool( 10);
 
         // Start the greeter
         executor.execute(new Greeter());
@@ -121,7 +123,7 @@ public class CallCenter {
         for (int i = 1; i <= NUMBER_OF_CUSTOMERS; i++) {
             executor.execute(new Customer(i));
             try {
-                sleep(ThreadLocalRandom.current().nextInt(10, 200)); // simulate random arrival
+                sleep(ThreadLocalRandom.current().nextInt(10, 100)); // simulate random arrival
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
